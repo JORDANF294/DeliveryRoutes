@@ -7,8 +7,8 @@ Aplicación de consola en **C# / .NET** que modela el mapa urbano como un grafo 
 Desde la carpeta `DeliveryRoutes`:
 
 ### Compilar
-```bash
 dotnet build
+
 
 ### Ejecutar con argumentos (caso completo desde D)
 dotnet run -- city.txt packages.txt D
