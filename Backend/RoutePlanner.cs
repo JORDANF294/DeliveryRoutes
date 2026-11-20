@@ -5,6 +5,9 @@ namespace Backend;
 /// </summary>
 public class RoutePlanner
 {
+    private const int DefaultSeed = 42;
+    private const int RandomRestarts = 35;
+
     private readonly Graph<string> _city;
     private readonly List<Package> _packages;
     private readonly Dictionary<int, Package> _packagesById;
@@ -43,7 +46,34 @@ public class RoutePlanner
 
     public List<Stop> Plan()
     {
-        return BuildGreedyRoute();
+        List<Stop> bestRoute = ImproveRoute(BuildGreedyRoute());
+        double bestDistance = TotalDistance(bestRoute);
+
+        List<Stop> insertionFromDefaultOrder = ImproveRoute(BuildCheapestInsertionRoute(_packages));
+        double insertionDefaultDistance = TotalDistance(insertionFromDefaultOrder);
+        if (insertionDefaultDistance < bestDistance && IsValid(insertionFromDefaultOrder))
+        {
+            bestRoute = insertionFromDefaultOrder;
+            bestDistance = insertionDefaultDistance;
+        }
+
+        Random rng = new(DefaultSeed);
+        List<Package> shuffledPackages = new(_packages);
+
+        for (int restart = 0; restart < RandomRestarts; restart++)
+        {
+            Shuffle(shuffledPackages, rng);
+            List<Stop> candidate = ImproveRoute(BuildCheapestInsertionRoute(shuffledPackages));
+            double candidateDistance = TotalDistance(candidate);
+
+            if (candidateDistance < bestDistance && IsValid(candidate))
+            {
+                bestRoute = candidate;
+                bestDistance = candidateDistance;
+            }
+        }
+
+        return bestRoute;
     }
 
     public double TotalDistance(List<Stop> route)
@@ -182,5 +212,194 @@ public class RoutePlanner
         }
 
         return route;
+    }
+
+    private List<Stop> BuildCheapestInsertionRoute(IReadOnlyList<Package> orderedPackages)
+    {
+        List<Stop> route = new(orderedPackages.Count * 2);
+
+        foreach (Package package in orderedPackages)
+        {
+            Stop pickup = new(package.Pickup, StopKind.Pickup, package.Id);
+            Stop delivery = new(package.Delivery, StopKind.Delivery, package.Id);
+
+            int bestPickupIndex = 0;
+            int bestDeliveryIndex = 1;
+            double bestCost = double.PositiveInfinity;
+
+            for (int pIdx = 0; pIdx <= route.Count; pIdx++)
+            {
+                for (int dIdx = pIdx; dIdx <= route.Count; dIdx++)
+                {
+                    List<Stop> candidate = new(route.Count + 2);
+                    candidate.AddRange(route.Take(pIdx));
+                    candidate.Add(pickup);
+                    candidate.AddRange(route.Skip(pIdx).Take(dIdx - pIdx));
+                    candidate.Add(delivery);
+                    candidate.AddRange(route.Skip(dIdx));
+
+                    double cost = TotalDistance(candidate);
+                    if (cost < bestCost)
+                    {
+                        bestCost = cost;
+                        bestPickupIndex = pIdx;
+                        bestDeliveryIndex = dIdx;
+                    }
+                }
+            }
+
+            List<Stop> updated = new(route.Count + 2);
+            updated.AddRange(route.Take(bestPickupIndex));
+            updated.Add(pickup);
+            updated.AddRange(route.Skip(bestPickupIndex).Take(bestDeliveryIndex - bestPickupIndex));
+            updated.Add(delivery);
+            updated.AddRange(route.Skip(bestDeliveryIndex));
+            route = updated;
+        }
+
+        return route;
+    }
+
+    private List<Stop> ImproveRoute(List<Stop> initialRoute)
+    {
+        List<Stop> current = new(initialRoute);
+        double currentDistance = TotalDistance(current);
+
+        bool improved = true;
+        while (improved)
+        {
+            improved = false;
+
+            // 1. Relocate a package pair (pickup + delivery) to its best valid positions.
+            foreach (Package package in _packages)
+            {
+                int pPos = current.FindIndex(s => s.PackageId == package.Id && s.Kind == StopKind.Pickup);
+                int dPos = current.FindIndex(s => s.PackageId == package.Id && s.Kind == StopKind.Delivery);
+                if (pPos < 0 || dPos < 0)
+                {
+                    continue;
+                }
+
+                List<Stop> withoutPair = new(current.Count - 2);
+                for (int i = 0; i < current.Count; i++)
+                {
+                    if (i != pPos && i != dPos)
+                    {
+                        withoutPair.Add(current[i]);
+                    }
+                }
+
+                Stop pickup = current[pPos];
+                Stop delivery = current[dPos];
+
+                List<Stop>? bestCandidate = null;
+                double bestDistance = currentDistance - 1e-6;
+
+                for (int i = 0; i <= withoutPair.Count; i++)
+                {
+                    for (int j = i; j <= withoutPair.Count; j++)
+                    {
+                        List<Stop> candidate = new(withoutPair.Count + 2);
+                        candidate.AddRange(withoutPair.Take(i));
+                        candidate.Add(pickup);
+                        candidate.AddRange(withoutPair.Skip(i).Take(j - i));
+                        candidate.Add(delivery);
+                        candidate.AddRange(withoutPair.Skip(j));
+
+                        double dist = TotalDistance(candidate);
+                        if (dist < bestDistance && IsValid(candidate))
+                        {
+                            bestDistance = dist;
+                            bestCandidate = candidate;
+                        }
+                    }
+                }
+
+                if (bestCandidate is not null)
+                {
+                    current = bestCandidate;
+                    currentDistance = bestDistance;
+                    improved = true;
+                }
+            }
+
+            // 2. Relocate a single stop while keeping pickup strictly before delivery.
+            for (int fromIdx = 0; fromIdx < current.Count; fromIdx++)
+            {
+                Stop movingStop = current[fromIdx];
+                List<Stop> withoutStop = new(current.Count - 1);
+                for (int i = 0; i < current.Count; i++)
+                {
+                    if (i != fromIdx)
+                    {
+                        withoutStop.Add(current[i]);
+                    }
+                }
+
+                List<Stop>? bestCandidate = null;
+                double bestDistance = currentDistance - 1e-6;
+
+                for (int toIdx = 0; toIdx <= withoutStop.Count; toIdx++)
+                {
+                    List<Stop> candidate = new(withoutStop.Count + 1);
+                    candidate.AddRange(withoutStop.Take(toIdx));
+                    candidate.Add(movingStop);
+                    candidate.AddRange(withoutStop.Skip(toIdx));
+
+                    if (!IsValid(candidate))
+                    {
+                        continue;
+                    }
+
+                    double dist = TotalDistance(candidate);
+                    if (dist < bestDistance)
+                    {
+                        bestDistance = dist;
+                        bestCandidate = candidate;
+                    }
+                }
+
+                if (bestCandidate is not null)
+                {
+                    current = bestCandidate;
+                    currentDistance = bestDistance;
+                    improved = true;
+                }
+            }
+
+            // 3. Swap pairs of stops when valid and beneficial.
+            for (int i = 0; i < current.Count - 1; i++)
+            {
+                for (int j = i + 1; j < current.Count; j++)
+                {
+                    List<Stop> candidate = new(current);
+                    (candidate[i], candidate[j]) = (candidate[j], candidate[i]);
+
+                    if (!IsValid(candidate))
+                    {
+                        continue;
+                    }
+
+                    double dist = TotalDistance(candidate);
+                    if (dist < currentDistance - 1e-6)
+                    {
+                        current = candidate;
+                        currentDistance = dist;
+                        improved = true;
+                    }
+                }
+            }
+        }
+
+        return current;
+    }
+
+    private static void Shuffle<T>(IList<T> items, Random rng)
+    {
+        for (int i = items.Count - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            (items[i], items[j]) = (items[j], items[i]);
+        }
     }
 }
