@@ -82,11 +82,13 @@ public static class CityFile
             if (normalizedDirection == "oneway")
             {
                 graph.AddEdge(from, to, distance);
+                graph.RegisterStreet(isOneWay: true);
             }
             else
             {
                 graph.AddEdge(from, to, distance);
                 graph.AddEdge(to, from, distance);
+                graph.RegisterStreet(isOneWay: false);
             }
         }
 

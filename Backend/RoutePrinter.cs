@@ -16,11 +16,12 @@ public static class RoutePrinter
     public static void Print(
         string start,
         int packageCount,
-        int locationCount,
+        Graph<string> city,
         IReadOnlyList<Stop> route,
         RoutePlanner planner)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(start);
+        ArgumentNullException.ThrowIfNull(city);
         ArgumentNullException.ThrowIfNull(route);
         ArgumentNullException.ThrowIfNull(planner);
 
@@ -29,7 +30,8 @@ public static class RoutePrinter
 
         StringBuilder output = new();
         output.AppendLine($"Posicion inicial: {normalizedStart}");
-        output.AppendLine($"Paquetes: {packageCount} Ubicaciones: {locationCount}");
+        output.AppendLine(
+            $"Paquetes: {packageCount} Ubicaciones: {city.VertexCount} Calles: {city.StreetCount} ({city.OneWayStreetCount} de un solo sentido)");
 
         string currentLocation = normalizedStart;
         double totalMeters = 0.0;
@@ -162,7 +164,7 @@ public static class RoutePrinter
         double meters = 0.0;
         for (int i = 0; i < path.Count - 1; i++)
         {
-            meters += planner.DistanceBetween(path[i], path[i + 1]);
+            meters += planner.StepDistance(path[i], path[i + 1]);
         }
 
         return meters;

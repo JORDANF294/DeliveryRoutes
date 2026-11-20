@@ -68,4 +68,17 @@ public class Graph<T> where T : notnull
 
         return edges.Any(edge => EqualityComparer<T>.Default.Equals(edge.To, to));
     }
+
+    public int StreetCount { get; private set; }
+
+    public int OneWayStreetCount { get; private set; }
+
+    public void RegisterStreet(bool isOneWay)
+    {
+        StreetCount++;
+        if (isOneWay)
+        {
+            OneWayStreetCount++;
+        }
+    }
 }

@@ -16,7 +16,7 @@ try
         throw new InvalidOperationException("Generated route failed validation.");
     }
 
-    RoutePrinter.Print(startLocation, packages.Count, city.VertexCount, route, planner);
+    RoutePrinter.Print(startLocation, packages.Count, city, route, planner);
 }
 catch (Exception ex)
 {

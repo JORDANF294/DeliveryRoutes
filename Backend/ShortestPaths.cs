@@ -1,27 +1,33 @@
 namespace Backend;
 
 /// <summary>
-/// Precomputes shortest paths and street sequences between relevant locations using Dijkstra's algorithm.
+/// Precomputes shortest paths and street sequences between locations using Dijkstra's algorithm.
 /// </summary>
 public class ShortestPaths
 {
+    private readonly Graph<string> _city;
     private readonly Dictionary<string, Dictionary<string, double>> _distances = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Dictionary<string, string?>> _previous = new(StringComparer.Ordinal);
 
     public ShortestPaths(Graph<string> city, IEnumerable<string> relevantLocations)
     {
-        ArgumentNullException.ThrowIfNull(city);
+        _city = city ?? throw new ArgumentNullException(nameof(city));
         ArgumentNullException.ThrowIfNull(relevantLocations);
 
-        HashSet<string> origins = new(relevantLocations, StringComparer.Ordinal);
-        foreach (string origin in origins)
+        HashSet<string> origins = new(_city.Vertices, StringComparer.Ordinal);
+        foreach (string location in relevantLocations)
         {
-            if (!city.ContainsVertex(origin))
+            if (!_city.ContainsVertex(location))
             {
-                throw new ArgumentException($"Vertex '{origin}' does not exist in the graph.", nameof(relevantLocations));
+                throw new ArgumentException($"Vertex '{location}' does not exist in the graph.", nameof(relevantLocations));
             }
 
-            (Dictionary<string, double> dist, Dictionary<string, string?> prev) = RunDijkstra(city, origin);
+            origins.Add(location);
+        }
+
+        foreach (string origin in origins)
+        {
+            (Dictionary<string, double> dist, Dictionary<string, string?> prev) = RunDijkstra(_city, origin);
             _distances[origin] = dist;
             _previous[origin] = prev;
         }
@@ -37,6 +43,25 @@ public class ShortestPaths
         }
 
         return distance;
+    }
+
+    public double GetStepDistance(string from, string to)
+    {
+        double minWeight = double.PositiveInfinity;
+        foreach (Edge<string> edge in _city.GetNeighbors(from))
+        {
+            if (string.Equals(edge.To, to, StringComparison.Ordinal) && edge.Weight < minWeight)
+            {
+                minWeight = edge.Weight;
+            }
+        }
+
+        if (!double.IsPositiveInfinity(minWeight))
+        {
+            return minWeight;
+        }
+
+        return GetDistance(from, to);
     }
 
     public List<string> GetPath(string from, string to)
