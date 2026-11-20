@@ -157,6 +157,11 @@ public class RoutePlanner
         return _shortestPaths.GetPath(from, to);
     }
 
+    public double DistanceBetween(string from, string to)
+    {
+        return _shortestPaths.GetDistance(from, to);
+    }
+
     internal List<Stop> BuildGreedyRoute()
     {
         List<Stop> route = new(_packages.Count * 2);
